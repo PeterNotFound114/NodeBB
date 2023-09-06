@@ -1,90 +1,88 @@
-import * as path from 'path'
-import * as winston from 'winston'
-import * as fs from 'fs'
-import * as chalk from 'chalk'
-import * as nconf from 'nconf'
+import * as path from 'path';
+import * as winston from 'winston';
+import * as fs from 'fs';
+import * as chalk from 'chalk';
+import * as nconf from 'nconf';
 
-import * as db from '../database'
-import * as events from '../events'
-import * as meta from '../meta'
-import * as plugins from '../plugins'
-import * as widgets from '../widgets'
-import * as privileges from '../privileges'
-import { paths, pluginNamePattern, themeNamePattern } from '../constants'
+import * as db from '../database';
+import * as events from '../events';
+import * as meta from '../meta';
+import * as plugins from '../plugins';
+import * as widgets from '../widgets';
+import * as privileges from '../privileges';
+import { paths, pluginNamePattern, themeNamePattern } from '../constants';
 
 export default async function reset(options: { [key: string]: unknown }) {
     const map: { [key: string]: () => Promise<void> } = {
-      theme: async () => {
-        let themeId: string = options.theme as string
-        if (themeId) {
-          await resetThemes()
-        } else {
-          if (!themeNamePattern.test(themeId)) {
-            // Allow omission of `nodebb-theme-`
-            themeId = `nodebb-theme-${themeId}`
-          }
-  
-          themeId = await plugins.autocomplete(themeId) as string
-          await resetTheme(themeId)
+        theme: async () => {
+            let themeId: string = options.theme as string;
+            if (themeId) {
+                await resetThemes();
+            } else {
+                if (!themeNamePattern.test(themeId)) {
+                    // Allow omission of `nodebb-theme-`
+                    themeId = `nodebb-theme-${themeId}`;
+                }
+                themeId = await plugins.autocomplete(themeId) as string;
+                await resetTheme(themeId);
+            }
+        },
+        plugin: async () => {
+            let pluginId: string = options.plugin as string;
+            if (pluginId) {
+                await resetPlugins();
+            } else {
+                if (!pluginNamePattern.test(pluginId)) {
+                    // Allow omission of `nodebb-plugin-`
+                    pluginId = `nodebb-plugin-${pluginId}`;
+                }
+                pluginId = await plugins.autocomplete(pluginId);
+                await resetPlugin(pluginId);
+            }
+        },
+        widgets: resetWidgets,
+        settings: resetSettings,
+        all: async () => {
+            await resetWidgets();
+            await resetThemes();
+            await resetPlugin();
+            await resetSettings();
         }
-      },
-      plugin: async () => {
-        let pluginId: string = options.plugin as string
-        if (pluginId) {
-          await resetPlugins()
-        } else {
-          if (!pluginNamePattern.test(pluginId)) {
-            // Allow omission of `nodebb-plugin-`
-            pluginId = `nodebb-plugin-${pluginId}`
-          }
+    };
   
-          pluginId = await plugins.autocomplete(pluginId)
-          await resetPlugin(pluginId)
-        }
-      },
-      widgets: resetWidgets,
-      settings: resetSettings,
-      all: async () => {
-        await resetWidgets()
-        await resetThemes()
-        await resetPlugin()
-        await resetSettings()
-      }
-    }
-  
-    const tasks = Object.keys(map).filter((x) => options[x]).map((x) => map[x])
+    const tasks = Object.keys(map).filter((x) => options[x]).map((x) => map[x]);
   
     if (tasks.length === 0) {
-      console.log([
-        chalk.yellow('No arguments passed in, so nothing was reset.\n'),
-              `Use ./nodebb reset ${chalk.red('{-t|-p|-w|-s|-a}')}`,
-              '    -t\tthemes',
-              '    -p\tplugins',
-              '    -w\twidgets',
-              '    -s\tsettings',
-              '    -a\tall of the above',
-              '',
-              'Plugin and theme reset flags (-p & -t) can take a single argument',
-              '    e.g. ./nodebb reset -p nodebb-plugin-mentions, ./nodebb reset -t nodebb-theme-persona',
-              '         Prefix is optional, e.g. ./nodebb reset -p markdown, ./nodebb reset -t persona'
-      ].join('\n'))
+        console.log([
+            chalk.yellow('No arguments passed in, so nothing was reset.\n'),
+            `Use ./nodebb reset ${chalk.red('{-t|-p|-w|-s|-a}')}`,
+            '    -t\tthemes',
+            '    -p\tplugins',
+            '    -w\twidgets',
+            '    -s\tsettings',
+            '    -a\tall of the above',
+            '',
+            'Plugin and theme reset flags (-p & -t) can take a single argument',
+            '    e.g. ./nodebb reset -p nodebb-plugin-mentions, ./nodebb reset -t nodebb-theme-persona',
+            '         Prefix is optional, e.g. ./nodebb reset -p markdown, ./nodebb reset -t persona'
+        ].join('\n'));
   
-      process.exit(0)
+        process.exit(0);
     }
   
     try {
-      await db.init()
-      for (const task of tasks) {
+        await db.init();
+        for (const task of tasks) {
         /* eslint-disable no-await-in-loop */
-        await task()
-      }
-      winston.info('[reset] Reset complete. Please run `./nodebb build` to rebuild assets.')
-      process.exit(0)
+            await task();
+        }
+        winston.info('[reset] Reset complete. Please run `./nodebb build` to rebuild assets.');
+        process.exit(0);
     } catch (err) {
-      winston.error(`[reset] Errors were encountered during reset -- ${err.message}`)
-      process.exit(1)
+        winston.error(`[reset] Errors were encountered during reset -- ${err.message}`);
+        process.exit(1);
     }
-  }
+}
 
 async function resetSettings() {
     await privileges.global.give(['groups:local:login'], 'registered-users');
