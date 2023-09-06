@@ -12,6 +12,75 @@ import * as widgets from '../widgets';
 import * as privileges from '../privileges';
 import { paths, pluginNamePattern, themeNamePattern } from '../constants';
 
+async function resetThemeTo(themeId: string) {
+    await meta.themes.set({
+        type: 'local',
+        id: themeId,
+    });
+    await meta.configs.set('bootswatchSkin', '');
+    winston.info(`[reset] Theme reset to ${themeId} and default skin`);
+}
+
+async function resetTheme(themeId) {
+    try {
+        await fs.promises.access(path.join(paths.nodeModules, themeId, 'package.json'));
+    } catch (err) {
+        winston.warn('[reset] Theme `%s` is not installed on this forum', themeId);
+        throw new Error('theme-not-found');
+    }
+    await resetThemeTo(themeId);
+}
+
+async function resetPlugins() {
+    if (nconf.get('plugins:active')) {
+        winston.error('Cannot reset plugins while plugin state is set in the configuration (config.json, environmental variables or terminal arguments), please modify the configuration instead');
+        process.exit(1);
+    }
+    await db.delete('plugins:active');
+    winston.info('[reset] All Plugins De-activated');
+}
+
+async function resetWidgets() {
+    await plugins.reload();
+    await widgets.reset();
+    winston.info('[reset] All Widgets moved to Draft Zone');
+}
+
+
+async function resetSettings() {
+    await privileges.global.give(['groups:local:login'], 'registered-users');
+    winston.info('[reset] registered-users given login privilege');
+    winston.info('[reset] Settings reset to default');
+}
+
+async function resetThemes() {
+    await resetThemeTo('nodebb-theme-persona');
+}
+
+async function resetPlugin(pluginId) {
+    try {
+        if (nconf.get('plugins:active')) {
+            winston.error('Cannot reset plugins while plugin state is set in the configuration (config.json, environmental variables or terminal arguments), please modify the configuration instead');
+            process.exit(1);
+        }
+        const isActive = await db.isSortedSetMember('plugins:active', pluginId);
+        if (isActive) {
+            await db.sortedSetRemove('plugins:active', pluginId);
+            await events.log({
+                type: 'plugin-deactivate',
+                text: pluginId,
+            });
+            winston.info('[reset] Plugin `%s` disabled', pluginId);
+        } else {
+            winston.warn('[reset] Plugin `%s` was not active on this forum', pluginId);
+            winston.info('[reset] No action taken.');
+        }
+    } catch (err) {
+        winston.error(`[reset] Could not disable plugin: ${pluginId} encountered error %s\n${err.stack}`);
+        throw err;
+    }
+}
+
 export default async function reset(options: { [key: string]: unknown }) {
     const map: { [key: string]: () => Promise<void> } = {
         theme: async () => {
@@ -82,72 +151,4 @@ export default async function reset(options: { [key: string]: unknown }) {
         winston.error(`[reset] Errors were encountered during reset -- ${err.message}`);
         process.exit(1);
     }
-}
-
-async function resetSettings() {
-    await privileges.global.give(['groups:local:login'], 'registered-users');
-    winston.info('[reset] registered-users given login privilege');
-    winston.info('[reset] Settings reset to default');
-}
-
-async function resetTheme(themeId) {
-    try {
-        await fs.promises.access(path.join(paths.nodeModules, themeId, 'package.json'));
-    } catch (err) {
-        winston.warn('[reset] Theme `%s` is not installed on this forum', themeId);
-        throw new Error('theme-not-found');
-    }
-    await resetThemeTo(themeId);
-}
-
-async function resetThemes() {
-    await resetThemeTo('nodebb-theme-persona');
-}
-
-async function resetThemeTo(themeId) {
-    await meta.themes.set({
-        type: 'local',
-        id: themeId,
-    });
-    await meta.configs.set('bootswatchSkin', '');
-    winston.info(`[reset] Theme reset to ${themeId} and default skin`);
-}
-
-async function resetPlugin(pluginId) {
-    try {
-        if (nconf.get('plugins:active')) {
-            winston.error('Cannot reset plugins while plugin state is set in the configuration (config.json, environmental variables or terminal arguments), please modify the configuration instead');
-            process.exit(1);
-        }
-        const isActive = await db.isSortedSetMember('plugins:active', pluginId);
-        if (isActive) {
-            await db.sortedSetRemove('plugins:active', pluginId);
-            await events.log({
-                type: 'plugin-deactivate',
-                text: pluginId,
-            });
-            winston.info('[reset] Plugin `%s` disabled', pluginId);
-        } else {
-            winston.warn('[reset] Plugin `%s` was not active on this forum', pluginId);
-            winston.info('[reset] No action taken.');
-        }
-    } catch (err) {
-        winston.error(`[reset] Could not disable plugin: ${pluginId} encountered error %s\n${err.stack}`);
-        throw err;
-    }
-}
-
-async function resetPlugins() {
-    if (nconf.get('plugins:active')) {
-        winston.error('Cannot reset plugins while plugin state is set in the configuration (config.json, environmental variables or terminal arguments), please modify the configuration instead');
-        process.exit(1);
-    }
-    await db.delete('plugins:active');
-    winston.info('[reset] All Plugins De-activated');
-}
-
-async function resetWidgets() {
-    await plugins.reload();
-    await widgets.reset();
-    winston.info('[reset] All Widgets moved to Draft Zone');
 }
