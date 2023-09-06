@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
 import * as path from 'path';
 import * as winston from 'winston';
 import * as fs from 'fs';
@@ -21,7 +22,7 @@ async function resetThemeTo(themeId: string) {
     winston.info(`[reset] Theme reset to ${themeId} and default skin`);
 }
 
-async function resetTheme(themeId) {
+async function resetTheme(themeId: string) {
     try {
         await fs.promises.access(path.join(paths.nodeModules, themeId, 'package.json'));
     } catch (err) {
@@ -57,13 +58,15 @@ async function resetThemes() {
     await resetThemeTo('nodebb-theme-persona');
 }
 
-async function resetPlugin(pluginId) {
+async function resetPlugin(pluginId?: string) {
     try {
         if (nconf.get('plugins:active')) {
-            winston.error('Cannot reset plugins while plugin state is set in the configuration (config.json, environmental variables or terminal arguments), please modify the configuration instead');
+            winston.error(
+                'Cannot reset plugins while the plugin state is set in the configuration (config.json, environmental variables, or terminal arguments), please modify the configuration instead'
+            );
             process.exit(1);
         }
-        const isActive = await db.isSortedSetMember('plugins:active', pluginId);
+        const isActive: boolean = await db.isSortedSetMember('plugins:active', pluginId) as boolean;
         if (isActive) {
             await db.sortedSetRemove('plugins:active', pluginId);
             await events.log({
@@ -76,7 +79,8 @@ async function resetPlugin(pluginId) {
             winston.info('[reset] No action taken.');
         }
     } catch (err) {
-        winston.error(`[reset] Could not disable plugin: ${pluginId} encountered error %s\n${err.stack}`);
+        const stack: string = err.stack as string;
+        winston.error(`[reset] Could not disable plugin: ${pluginId} encountered error %s\n${stack}`);
         throw err;
     }
 }
@@ -105,7 +109,7 @@ export default async function reset(options: { [key: string]: unknown }) {
                     // Allow omission of `nodebb-plugin-`
                     pluginId = `nodebb-plugin-${pluginId}`;
                 }
-                pluginId = await plugins.autocomplete(pluginId);
+                pluginId = await plugins.autocomplete(pluginId) as string;
                 await resetPlugin(pluginId);
             }
         },
@@ -116,11 +120,11 @@ export default async function reset(options: { [key: string]: unknown }) {
             await resetThemes();
             await resetPlugin();
             await resetSettings();
-        }
+        },
     };
-  
-    const tasks = Object.keys(map).filter((x) => options[x]).map((x) => map[x]);
-  
+
+    const tasks = Object.keys(map).filter(x => options[x]).map(x => map[x]);
+
     if (tasks.length === 0) {
         console.log([
             chalk.yellow('No arguments passed in, so nothing was reset.\n'),
@@ -133,12 +137,12 @@ export default async function reset(options: { [key: string]: unknown }) {
             '',
             'Plugin and theme reset flags (-p & -t) can take a single argument',
             '    e.g. ./nodebb reset -p nodebb-plugin-mentions, ./nodebb reset -t nodebb-theme-persona',
-            '         Prefix is optional, e.g. ./nodebb reset -p markdown, ./nodebb reset -t persona'
+            '         Prefix is optional, e.g. ./nodebb reset -p markdown, ./nodebb reset -t persona',
         ].join('\n'));
-  
+
         process.exit(0);
     }
-  
+
     try {
         await db.init();
         for (const task of tasks) {
@@ -148,7 +152,8 @@ export default async function reset(options: { [key: string]: unknown }) {
         winston.info('[reset] Reset complete. Please run `./nodebb build` to rebuild assets.');
         process.exit(0);
     } catch (err) {
-        winston.error(`[reset] Errors were encountered during reset -- ${err.message}`);
+        const msg: string = err.message as string;
+        winston.error(`[reset] Errors were encountered during reset -- ${msg}`);
         process.exit(1);
     }
 }
